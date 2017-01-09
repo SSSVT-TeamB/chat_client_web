@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Chat</title>
+    <style type="text/css">
+        .container {
+            background-color: #99CCFF;
+            border: thick solid #808080;
+            padding: 20px;
+            margin: 20px;
+        }
+    </style>
+    
+    <meta charset="utf-8" />
+
+    <script src="http://ajax.aspnetcdn.com/ajax/jQuery/jquery-2.2.0.min.js"></script>
+    <script src="http://ajax.aspnetcdn.com/ajax/signalr/jquery.signalr-2.2.0.min.js"></script>
+    <script src="http://localhost:51925/signalr/hubs"></script>
+</head>
+
+<body>
+    <div class="container">  
+        <input type="text" id="message" />
+        <input type="button" id="sendmessage" value="Send" />
+        <input type="hidden" id="displayname" />
+        <ul id="chat">
+        </ul>
+    </div>
+
+    <script type="text/javascript">
+        $(function () {
+
+            var hub = $.connection.messagesHub;
+
+            hub.client.onReceiveMessage = function (message) {
+ 
+                var encodedName = $('<div />').text(message.username).html();
+                var encodedMsg = $('<div />').text(message.text).html();
+
+                $('#chat').append('<li><strong>' + encodedName
+                    + '</strong>:&nbsp;&nbsp;' + encodedMsg + '</li>');
+            };
+
+            $('#displayname').val(prompt('Enter your name:', ''));
+ 
+            $('#message').focus();
+            
+            //debug
+            $.connection.hub.logging = true;
+            
+            $.connection.hub.url = "http://localhost:51925/signalr/hubs"
+            
+            var isChrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
+
+            $.connection.hub.start({jsonp: isChrome}).done(function () {
+            
+            //add listener after signalr connects
+                $('#sendmessage').click(function () {
+
+                    hub.server.sendMessage({username: $('#displayname').val(), text: $('#message').val()});
+                    
+                    $('#message').val('').focus();
+                });
+            });
+        });
+    </script>
+</body>
+</html>
