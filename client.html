@@ -15,7 +15,7 @@
 
     <script src="http://ajax.aspnetcdn.com/ajax/jQuery/jquery-2.2.0.min.js"></script>
     <script src="http://ajax.aspnetcdn.com/ajax/signalr/jquery.signalr-2.2.0.min.js"></script>
-    <script src="http://localhost:51925/signalr/hubs"></script>
+    <script src="http://localhost:5000/signalr/hubs"></script>
 </head>
 
 <body>
@@ -48,7 +48,7 @@
             //debug
             $.connection.hub.logging = true;
             
-            $.connection.hub.url = "http://localhost:51925/signalr/hubs"
+            $.connection.hub.url = "http://localhost:5000/signalr/hubs"
             
             var isChrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
 
