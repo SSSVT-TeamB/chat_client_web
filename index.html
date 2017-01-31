@@ -1,0 +1,243 @@
+<style>
+*{transition-duration:0.5s}
+body{background:#f0f0f0;font-family:arial}
+#content{width:calc(100% - 92px);height:calc(100% - 92px);background:rgba(255,255,255,0.8);margin-left:46px;margin-top:46px;box-shadow:0px 1px 4px rgba(0,0,0,0.3)}
+.panel{padding:12px;background:#57b;color:white;font-weight:bold;font-size:20px}
+#rooms{display:none}
+.sidebar, #chat {height:calc(100% - 48px);overflow-y:auto;overflow-x:hidden;}
+.sidebar{float:left;width:256px;max-width:50%;border-right:2px solid #eee;text-align:center}
+#chat{float:right}
+.overlay{background:rgba(0,0,0,0.2);position:absolute;top:0px;left:0px;width:100%;height:100%;text-align:center}
+.dialog{max-height:90%;display:inline-block;background:#fff;margin-top:128px;padding:8px;box-shadow:0px 1px 4px rgba(0,0,0,0.3);max-height:calc(100% - 256px);overflow:auto}
+h1{font-size:16px;padding:4px;margin:0px;text-align:center}
+.actions button{float:left;margin-top:4px;text-align:center}
+input{padding:6px;background:#fff;}
+button{padding:6px;background:#eee;}
+input:focus,button:hover{border:2px solid #abf}
+input,button{outline:none;border:2px solid #ccc;}
+var{display:none}
+#contacts > div{width:100%;border-bottom:2px solid #eee;display:inline-block;cursor:pointer}
+#contacts > div:hover{background:#eee;border-bottom:2px solid #abf}
+#contacts .addContact{background-image:url('res/addContact.png');}
+#contacts > div > div{padding:15px;float:left}
+#contacts div .img{border-radius:32px;height:37px;width:37px;padding:0px;margin:6px;background-size:cover;background-position:center}
+.userlist div{padding:8px;text-align:left;border-bottom:2px solid #eee;width:256px}
+.userlist div:hover{background:#eee;border-bottom:2px solid #abf}
+</style>
+<meta charset='UTF-8' />
+
+<script src="http://ajax.aspnetcdn.com/ajax/jQuery/jquery-2.2.0.min.js"></script>
+<script src="http://ajax.aspnetcdn.com/ajax/signalr/jquery.signalr-2.2.0.min.js"></script>
+<script src="http://warhome.eu:8080/signalr/hubs"></script>
+
+<script type='text/javascript'>
+	$.connection.hub.logging = true;            
+	$.connection.hub.url = "http://warhome.eu:8080/signalr/hubs"
+	var isChrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
+	$.connection.hub.start({jsonp: isChrome}).done(function () {
+		init();
+	});
+
+	function init(){
+		initVars();
+		loginForm();
+	}
+
+	function loginForm(){
+		logform = new PopupForm(loginFormHTML, function(){
+			loading = new Loading();
+			login(user.value, pass.value, function(success){
+				if(success) this.close();
+				loading.done();
+			}.bind(this));
+		});
+		logform.cancel.innerHTML="Register";
+		logform.cancel.onclick=function(){
+			this.close();
+			registerForm();
+		}.bind(logform);
+	}
+
+	function registerForm(){
+		regform = new PopupForm(registerFormHTML, function(){
+			console.log(this);
+			loading = new Loading();
+			register(user.value, pass.value, displayName.value, function(success){
+				console.log(this.overlay);
+				if(success==true){
+					console.log(this.close);
+					this.close();
+					console.log(this.overlay);
+				}
+				loading.done();
+			}.bind(this));
+			
+		});
+		regform.cancel.onclick=function(){
+			this.close();
+			loginForm();
+		}.bind(regform);
+	}
+
+	function register(username, passw, display, callback){
+		$.connection.loginHub.server.register({Username: username, Password: passw}, display).done(function(result){
+			if(result==0){
+				login(username, passw, callback);
+			}else{
+				callback();
+				error("Result code: "+result);
+			}
+			
+		});
+	}
+
+	function login(name, pass, callback){
+		$.connection.loginHub.server.authentificate({Username: name, Password: pass}).done(function(User){
+			if(typeof User == "undefined"){
+				callback();
+				error("Wrong name or password");
+			}else{
+				callback(true);
+
+			}
+		});
+	}
+
+	function findContacts(){
+		findform = new PopupForm(findContactsHTML, function(){
+			findContact(str.value);
+			this.close();
+		});
+	}
+
+	function findContact(name){
+		$.connection.userHub.server.findContact(name).done(function(users){
+			userlist="<div class='userlist'>";
+			for(i = 0; i < users.length; i++){
+				userlist+="<div onclick='addContact("+users[i].Id+")'>"+users[i].Name+"</div>";
+			}
+			userlist = new PopupForm(userlist, false);
+			userlist.send.remove();
+		});
+	}
+
+	function addContact(id){
+	loading = new Loading();
+		$.connection.userHub.server.addContact(id).done(function(result){
+			loading.done();
+			console.log(result);
+			if(result == 0){
+				getContacts();
+			}else{
+				error(result);
+			}
+		});
+	}
+
+	function getContacts(callback){
+		$.connection.userHub.server.getContacts().done(function(contacts){
+			console.log("asgdsa");
+			console.log(contacts);
+		});
+	}
+
+	function Loading(){
+		this.err = new PopupForm("Loading...", null);
+		this.err.send.remove();
+		this.err.cancel.remove();
+		
+		this.done=function(){
+			this.err.overlay.remove()
+		}.bind(this);
+
+	}
+
+	function error(err){
+		this.form = new PopupForm(err, null);
+		this.form.send.remove();
+		this.form.cancel.style.float="initial";
+		this.form.cancel.innerHTML="Close";
+	}
+
+	function PopupForm(html, callback){
+		this.callback = callback;
+		this.overlay=document.createElement("div");
+		this.holder=document.createElement("div");
+		this.form=document.createElement("div");
+		this.actions=document.createElement("div");
+		this.send=document.createElement("button");
+		this.cancel=document.createElement("button");
+		this.overlay.appendChild(this.holder);
+		this.holder.appendChild(this.form);
+		this.holder.appendChild(this.actions);
+		this.actions.appendChild(this.cancel);
+		this.actions.appendChild(this.send);
+		document.body.appendChild(this.overlay);
+		this.overlay.className = "overlay";
+		this.holder.className = "dialog";
+		this.actions.className = "actions";
+
+		this.form.innerHTML = html;
+
+		this.send.innerHTML="Send";
+		this.send.style.float="right";
+		this.cancel.innerHTML="Cancel";
+		this.send.onclick = function(){this.callback()}.bind(this);
+		this.cancel.onclick = function(){this.close()}.bind(this);
+
+		this.close=function(){
+			this.overlay.remove();
+		}.bind(this);
+		this.onSubmit=function(fn){
+			this.send.onclick=fn;
+		}
+	}	
+
+	function initVars(){
+		elems=document.getElementsByTagName('var');
+		for(let i=elems.length-1; i > -1; i--){
+			eval(elems[i].id+"=\""+elems[i].innerHTML.replace(/\n/g, "").replace(/\"/g, "\\\"")+"\";");
+			elems[i].remove();
+		}
+	}
+</script>
+
+
+<body>
+	<div id='content'>
+		<div class='panel'>TEAM-B CHAT</div>
+		<div class='sidebar'>
+			<div id='rooms'>
+				Roomky
+			</div>
+			<div id='contacts'>
+				<div onclick='findContacts()'>
+					<div class='img addContact'></div>
+					<div>Add new contact</div>
+				</div>
+			</div>
+		</div>
+		<div id='chat'>
+			
+		</div>
+	</div>
+</body>
+<var id='loginFormHTML'>
+	<h1>Login:</h1>
+	<table>
+		<tr><td>Username:<td><input id='user'>
+		<tr><td>Password:<td><input id='pass' type='password'>
+	</table>
+</var>
+<var id='registerFormHTML'>
+	<h1>Register:</h1>
+	<table>
+		<tr><td>Username:<td><input id='user'>
+		<tr><td>Display name:<td><input id='displayName'>
+		<tr><td>Password:<td><input id='pass' type='password'>
+	</table>
+</var>
+<var id='findContactsHTML'>
+	<h1>Find contact:</h1>
+	<input id='str'>
+</var>
