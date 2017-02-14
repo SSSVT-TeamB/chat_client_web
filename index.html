@@ -3,7 +3,7 @@
 body{background:#f0f0f0;font-family:arial}
 #content{width:calc(100% - 92px);height:calc(100% - 92px);background:rgba(255,255,255,0.8);margin-left:46px;margin-top:46px;box-shadow:0px 1px 4px rgba(0,0,0,0.3)}
 .panel{padding:12px;background:#57b;color:white;font-weight:bold;font-size:20px}
-#rooms{display:none}
+#rooms{display:block}
 .sidebar, #chat {height:calc(100% - 48px);overflow-y:auto;overflow-x:hidden;}
 .sidebar{float:left;width:256px;max-width:50%;border-right:2px solid #eee;text-align:center}
 #chat{float:right}
@@ -16,13 +16,26 @@ button{padding:6px;background:#eee;}
 input:focus,button:hover{border:2px solid #abf}
 input,button{outline:none;border:2px solid #ccc;}
 var{display:none}
-#contacts > div{width:100%;border-bottom:2px solid #eee;display:inline-block;cursor:pointer}
-#contacts > div:hover{background:#eee;border-bottom:2px solid #abf}
-#contacts .addContact{background-image:url('res/addContact.png');}
-#contacts > div > div{padding:15px;float:left}
-#contacts div .img{border-radius:32px;height:37px;width:37px;padding:0px;margin:6px;background-size:cover;background-position:center}
+#contacts {display:none}
+#contacts > div, #rooms > div{width:100%;border-bottom:2px solid #eee;display:inline-block;cursor:pointer}
+#rooms > div.new{background:#abf}
+#contacts > div:hover, #rooms > div:hover{background:#eee;border-bottom:2px solid #abf}
+.sidebar .addContact{background-image:url('res/addContact.png');}
+#contacts > div > div, #rooms > div > div{padding:15px;float:left;max-width:calc(100% - 104px);white-space: nowrap;overflow:hidden;text-overflow: ellipsis}
+.sidebar div .img{border-radius:32px;height:37px;width:37px;padding:0px !important;margin:6px;background-size:cover;background-position:center}
 .userlist div{padding:8px;text-align:left;border-bottom:2px solid #eee;width:256px}
 .userlist div:hover{background:#eee;border-bottom:2px solid #abf}
+tab{padding:8px;border:1px solid #e1e1e1;background:#efefef;margin:0 !important;display:inline-block;text-align:center;float:left}
+tab:hover{background:#fcfcfc;cursor:pointer}
+.tabHolder{display:inline-block;position:relative;text-align:left;width:100%}
+msg{display:block;margin:6px 12px;clear:both}
+msg > text{display:inline-block;background:#57b;color:white;border-radius:4px;padding:8px}
+msg > sender{display:block;font-size:12px}
+msg.own > text{background:#eee;border:1px solid #dfdfdf;float:right;color:#000}
+msg.own > sender{text-align:right}
+#chat {width:calc(100% - 258px);position:relative}
+#messages{max-height:calc(100% - 30px); overflow-y:auto}
+#message{position:absolute;bottom:0px;width:100%}
 </style>
 <meta charset='UTF-8' />
 
@@ -34,6 +47,14 @@ var{display:none}
 	$.connection.hub.logging = true;            
 	$.connection.hub.url = "http://warhome.eu:8080/signalr/hubs"
 	var isChrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
+				$.connection.messageHub.client.OnNewMessage=function(msg, room){
+				if(room.Id == window.currentChat){
+					addMessage(msg.Text, msg.Sender);
+				}else{
+					rooms.querySelector("#room"+room.Id).className="new";
+				}
+//				addMessage
+				}
 	$.connection.hub.start({jsonp: isChrome}).done(function () {
 		init();
 	});
@@ -98,7 +119,9 @@ var{display:none}
 				error("Wrong name or password");
 			}else{
 				callback(true);
-
+				getContacts();
+				getRooms();
+				window.User = User;
 			}
 		});
 	}
@@ -135,9 +158,11 @@ var{display:none}
 	}
 
 	function getContacts(callback){
-		$.connection.userHub.server.getContacts().done(function(contacts){
-			console.log("asgdsa");
-			console.log(contacts);
+		$.connection.userHub.server.getContacts().done(function(contactList){
+			contacts.innerHTML="<div onclick='findContacts()'><div class='img addContact'></div><div>Add new contact</div></div>";
+			for(contact of contactList){
+				SidebarContact(contact.Id, contact.Name);
+			}
 		});
 	}
 
@@ -192,12 +217,84 @@ var{display:none}
 			this.send.onclick=fn;
 		}
 	}	
+	
+	function SidebarContact(id, name){
+		contacts.innerHTML+="<div onclick='openContact("+id+")'><div class='img addContact'></div><div>"+name+"</div>";
+	}
+
+	function SidebarRoom(id, name){
+		rooms.innerHTML+="<div id='room"+id+"' onclick='openRoom("+id+")'><div class='img imgRoom'></div><div>"+name+"</div>";
+	}
 
 	function initVars(){
 		elems=document.getElementsByTagName('var');
 		for(let i=elems.length-1; i > -1; i--){
 			eval(elems[i].id+"=\""+elems[i].innerHTML.replace(/\n/g, "").replace(/\"/g, "\\\"")+"\";");
 			elems[i].remove();
+		}
+	}
+
+	function getRooms(){
+		$.connection.chatRoomHub.server.getUserRooms().done(function(arr){
+				rooms.innerHTML="";
+			for(room of arr){
+				SidebarRoom(room.Id, room.Name);
+			}
+		});
+	}
+
+
+	window.currentChat=-1;
+
+	function openRoom(id){
+		window.currentChat=id;
+		$.connection.messageHub.server.getRoomMessages(id).done(function(msgs){
+			console.log(msgs);
+			messages.innerHTML="";
+			for(msg of msgs){
+				addMessage(msg.Text, msg.Sender);
+			}
+			rooms.querySelector("#room"+id).className="";
+		});
+	}
+
+	function sendMessage(msg){
+		$.connection.messageHub.server.newMessage(msg+"", window.currentChat).done(function(result){
+			console.log(result);
+		});
+	}
+
+	function openContact(id){
+		$.connection.chatRoomHub.server.createRoom(id).done(function(room){
+			console.log(room);
+			getRooms();
+			showRooms();
+			openRoom(id);
+
+		});
+	}
+
+	function showRooms(){
+		rooms.style.display="block";
+		contacts.style.display="none";
+	}
+
+	function showContacts(){
+		rooms.style.display="none";
+		contacts.style.display="block";
+	}
+	function addMessage(msg, sender){
+	add="";
+	if(sender.Id == User.Id){
+		add = " class='own'";
+	}
+		messages.innerHTML+="<msg"+add+"><sender>"+sender.Name+"</sender><text>"+msg+"</text></msg>";
+	}
+
+	function handleEnter(e){
+		if(e.keyCode==13){
+			sendMessage(message.value, User.Name);
+			message.value="";
 		}
 	}
 </script>
@@ -207,18 +304,21 @@ var{display:none}
 	<div id='content'>
 		<div class='panel'>TEAM-B CHAT</div>
 		<div class='sidebar'>
+			<div class='tabHolder'>
+				<tab style='width:calc(50% - 18px);position:absolute;' onclick='showRooms()'>Rooms</tab>
+				<tab style='width:calc(50% - 18px);float:right' onclick='showContacts()'>Contacts</tab>
+			</div>
 			<div id='rooms'>
 				Roomky
 			</div>
 			<div id='contacts'>
-				<div onclick='findContacts()'>
-					<div class='img addContact'></div>
-					<div>Add new contact</div>
-				</div>
 			</div>
 		</div>
 		<div id='chat'>
-			
+			<div id='messages'>
+			No chat room selected
+			</div>
+			<input id='message' onkeypress='handleEnter(event)'>
 		</div>
 	</div>
 </body>
@@ -227,6 +327,9 @@ var{display:none}
 	<table>
 		<tr><td>Username:<td><input id='user'>
 		<tr><td>Password:<td><input id='pass' type='password'>
+		<tr><td onclick="login('warmos', 'prdel', function(){
+			document.getElementsByClassName('overlay')[0].remove();
+		})">Debug login
 	</table>
 </var>
 <var id='registerFormHTML'>
