@@ -21,6 +21,7 @@ var{display:none}
 #rooms > div.new{background:#abf}
 #contacts > div:hover, #rooms > div:hover{background:#eee;border-bottom:2px solid #abf}
 .sidebar .addContact{background-image:url('res/addContact.png');}
+.sidebar .imgRoom{background-image:url('res/user.png');}
 #contacts > div > div, #rooms > div > div{padding:15px;float:left;max-width:calc(100% - 104px);white-space: nowrap;overflow:hidden;text-overflow: ellipsis}
 .sidebar div .img{border-radius:32px;height:37px;width:37px;padding:0px !important;margin:6px;background-size:cover;background-position:center}
 .userlist div{padding:8px;text-align:left;border-bottom:2px solid #eee;width:256px}
@@ -35,7 +36,12 @@ msg.own > text{background:#eee;border:1px solid #dfdfdf;float:right;color:#000}
 msg.own > sender{text-align:right}
 #chat {width:calc(100% - 258px);position:relative}
 #messages{max-height:calc(100% - 30px); overflow-y:auto}
-#message{position:absolute;bottom:0px;width:100%}
+#message{position:absolute;bottom:0px;width:calc(100% - 32px)}
+.optMenu{width:}
+.contextMenu{position:absolute;background:#fff;display:inline-block;}
+.contextMenu div{padding:9px;}
+.contextMenu div:hover{background:#57b}
+.overlay{position:absolute;width:100%;height:100%;top:0;left:0;background:rgba(0,0,0,0.2)}
 </style>
 <meta charset='UTF-8' />
 
@@ -47,14 +53,29 @@ msg.own > sender{text-align:right}
 	$.connection.hub.logging = true;            
 	$.connection.hub.url = "http://warhome.eu:8080/signalr/hubs"
 	var isChrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
-				$.connection.messageHub.client.OnNewMessage=function(msg, room){
-				if(room.Id == window.currentChat){
-					addMessage(msg.Text, msg.Sender);
-				}else{
-					rooms.querySelector("#room"+room.Id).className="new";
-				}
-//				addMessage
-				}
+	$.connection.messageHub.client.OnNewMessage=function(msg, room){
+	if(room.Id == window.currentChat){
+		addMessage(msg.Text, msg.Sender);
+	}else{
+		rooms.querySelector("#room"+room.Id).className="new";
+	}
+		//addMessage
+	}
+	$.connection.chatRoomHub.client.OnNewRoomAdd=function(){
+		getRooms();
+	}
+	$.connection.chatRoomHub.client.OnRoomPartnerAdd=function(){
+		getRooms();
+	}
+	$.connection.chatRoomHub.client.OnRoomRename=function(){
+		getRooms();
+	}
+	$.connection.chatRoomHub.client.OnRoomRemove=function(){
+		setTimeout(getRooms, 1000);
+	}
+	$.connection.chatRoomHub.client.OnNewContactAdd=function(){
+		getContacts();
+	}
 	$.connection.hub.start({jsonp: isChrome}).done(function () {
 		init();
 	});
@@ -119,8 +140,9 @@ msg.own > sender{text-align:right}
 				error("Wrong name or password");
 			}else{
 				callback(true);
-				getContacts();
-				getRooms();
+				getRooms(function(){
+					getContacts();
+				});
 				window.User = User;
 			}
 		});
@@ -160,8 +182,10 @@ msg.own > sender{text-align:right}
 	function getContacts(callback){
 		$.connection.userHub.server.getContacts().done(function(contactList){
 			contacts.innerHTML="<div onclick='findContacts()'><div class='img addContact'></div><div>Add new contact</div></div>";
+			window.contactlist = new Array();
 			for(contact of contactList){
 				SidebarContact(contact.Id, contact.Name);
+				window.contactlist.push(contact);
 			}
 		});
 	}
@@ -207,7 +231,7 @@ msg.own > sender{text-align:right}
 		this.send.innerHTML="Send";
 		this.send.style.float="right";
 		this.cancel.innerHTML="Cancel";
-		this.send.onclick = function(){this.callback()}.bind(this);
+		this.send.onclick = function(){this.callback();this.close()}.bind(this);
 		this.cancel.onclick = function(){this.close()}.bind(this);
 
 		this.close=function(){
@@ -223,7 +247,25 @@ msg.own > sender{text-align:right}
 	}
 
 	function SidebarRoom(id, name){
-		rooms.innerHTML+="<div id='room"+id+"' onclick='openRoom("+id+")'><div class='img imgRoom'></div><div>"+name+"</div>";
+		room=document.createElement("div");
+		room.id='room'+id;
+		room.oncontextmenu=function(){
+			console.log(this);
+			ctx = new ContextMenu();
+			ctx.addItem("Add person", function(){addPersonDialog(id)});
+			ctx.addItem("Rename chatroom", function(){chatRenameDialog(id)});
+			ctx.addItem("Delete chatroom", function(){chatDeleteDialog(id)});
+			return false;
+		}
+		room.onclick=function(){openRoom(id)};
+		inDiv = document.createElement("div");
+		room.appendChild(inDiv);
+		inDiv.className="img imgRoom";
+		inDiv = document.createElement("div");
+		room.appendChild(inDiv);
+		inDiv.innerText = name;
+		rooms.appendChild(room);
+//		rooms.innerHTML+="<div id='room"+id+"' oncontextmenu= onclick='openRoom("+id+")'><div class='img imgRoom'></div><div>"+name+"</div>";
 	}
 
 	function initVars(){
@@ -234,15 +276,81 @@ msg.own > sender{text-align:right}
 		}
 	}
 
-	function getRooms(){
+	function getRooms(callback){
 		$.connection.chatRoomHub.server.getUserRooms().done(function(arr){
-				rooms.innerHTML="";
+			if(typeof callback != "undefined")
+				callback();
+			rooms.innerHTML="";
 			for(room of arr){
 				SidebarRoom(room.Id, room.Name);
 			}
 		});
 	}
 
+
+	
+	window.oncontextmenu = function(e){
+		//e.preventDefault();
+		//e.stopPropagation();
+		return false;
+	}
+	window.onmousemove = function(e){
+		window.mouseY = e.clientY;
+		window.mouseX = e.clientX;
+	}
+
+	function ContextMenu(html){
+		this.close = function(){
+			this.overlay.remove();	
+		}.bind(this);
+		this.overlay = document.createElement("div");
+		this.overlay.className = "overlay";
+		this.overlay.onclick = this.close;
+		this.elem = document.createElement("div");
+		if(typeof html != "undefined")
+			this.elem.innerHTML=html;
+		this.elem.className = "contextMenu";
+		this.elem.style.top = window.mouseY;
+		this.elem.style.left = window.mouseX;
+		document.body.appendChild(this.overlay);
+		this.overlay.appendChild(this.elem);
+		this.addItem = function(item, func){
+			this.tmp = document.createElement("div");
+			this.tmp.onclick = func;
+			this.tmp.innerText=item;
+			this.elem.appendChild(this.tmp);
+		}
+	}
+
+	function chatRenameDialog(id){
+		ren = new PopupForm("Input new name:<input id='newname'>", function(){
+			chatRename(id, newname.value);
+		});
+	}
+
+	function chatDeleteDialog(id){
+		ren = new PopupForm("Are you sure to delete this chat?", function(){
+			chatDelete(id);
+		});
+	}
+
+	function chatDelete(id){
+		$.connection.chatRoomHub.server.removeRoom(id).done(function(res){
+			if(res == 2){
+				error("Private rooms are not deletable. Copyright Hlavac");
+			}else{
+				getRooms();
+			}
+		});
+	}
+
+	function chatRename(id, newname){
+		$.connection.chatRoomHub.server.renameRoom(newname, id).done(function(res){
+			console.log(res);
+			getRooms();
+
+		});
+	}
 
 	window.currentChat=-1;
 
@@ -297,6 +405,26 @@ msg.own > sender{text-align:right}
 			message.value="";
 		}
 	}
+	function addPerson(id){
+		console.log("adding "+id);
+		$.connection.chatRoomHub.server.addPartner(id, window.focusedRoom).done(function(res){
+				console.log(res);
+		});
+	}
+	function showRoomOptions(){
+		ctx = new ContextMenu();
+		ctx.addItem("Add people", addPersonDialog);
+	}
+	function addPersonDialog(id){
+		window.focusedRoom = id;
+		contactHTML="<div class=\"userlist\">";
+		for(i = 0; i < window.contactlist.length; i++){
+			contactHTML+="<div onclick=\"addPerson("+window.contactlist[i].Id+");pop.close();\">"+window.contactlist[i].Name+"</div>";
+		}
+		contactHTML+="</div>";
+		pop = new PopupForm(contactHTML, null);
+		pop.send.remove();
+	}
 </script>
 
 
@@ -319,6 +447,7 @@ msg.own > sender{text-align:right}
 			No chat room selected
 			</div>
 			<input id='message' onkeypress='handleEnter(event)'>
+			<div class="optMenu" onclick="showRoomOptions()"></div>
 		</div>
 	</div>
 </body>
